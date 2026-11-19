@@ -54,12 +54,30 @@ request_json = {
     }
 }
 
-embedding_model = Model.from_pretrained(
-    "pyannote/embedding", use_auth_token=os.getenv('HF_TOKEN'))
-embedding_inference = Inference(
-    embedding_model, window="whole")
+embedding_model = None
+embedding_inference = None
+
+def _init_embedding():
+    global embedding_model, embedding_inference
+    if embedding_model is None:
+        hf_token = os.getenv('HF_TOKEN')
+        if not hf_token or hf_token == 'hf_xxx':
+            logger.warning("HF_TOKEN not set or invalid. Speaker embedding features will be disabled.")
+            return False
+        try:
+            embedding_model = Model.from_pretrained(
+                "pyannote/embedding", use_auth_token=hf_token)
+            embedding_inference = Inference(
+                embedding_model, window="whole")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to load pyannote embedding model: {e}")
+            return False
+    return True
 
 def generate_embedding(wav_path):
+    if not _init_embedding():
+        return None
     embedding = embedding_inference(wav_path)
     return embedding
 
@@ -130,6 +148,9 @@ def tts(text, output_path, speaker_wav, voice_type=None):
             logger.warning(e)
 
 def get_available_speakers():
+    if not _init_embedding():
+        logger.warning("Cannot get available speakers without HF_TOKEN")
+        return
     if not os.path.exists('voice_type'):
         os.makedirs('voice_type')
     voice_types = ['BV001_streaming', 'BV002_streaming', 'BV005_streaming', 'BV007_streaming', 'BV033_streaming', 'BV034_streaming', 'BV056_streaming', 'BV102_streaming', 'BV113_streaming', 'BV115_streaming', 'BV119_streaming', 'BV700_streaming', 'BV701_streaming']
